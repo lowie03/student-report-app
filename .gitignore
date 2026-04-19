@@ -1,0 +1,20 @@
+# ── Environment & secrets ─────────────────────
+.env
+
+# ── Python ────────────────────────────────────
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# ── Uploads (temp files) ─────────────────────
+backend/uploads/
+
+# ── Node / React ──────────────────────────────
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# ── OS files ──────────────────────────────────
+.DS_Store
+Thumbs.db
