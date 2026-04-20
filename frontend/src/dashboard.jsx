@@ -58,6 +58,17 @@ const S = {
     display: "flex",
     alignItems: "center",
     gap: "8px"
+  },
+  sectionHeader: {
+    fontSize: "12px",
+    fontWeight: 800,
+    color: "var(--muted)",
+    textTransform: "uppercase",
+    letterSpacing: "0.15em",
+    marginBottom: "24px",
+    display: "flex",
+    alignItems: "center",
+    gap: "8px"
   }
 };
 
@@ -71,6 +82,11 @@ const ICONS = {
 
 export default function Dashboard({ data, onReset }) {
   const [activeTab, setActiveTab] = useState("overview");
+  const [viewMode, setViewMode] = useState("grid");
+
+  const handleDownload = () => {
+    window.print();
+  };
 
   const subjects = data.subjects || [];
   const sorted = [...subjects].sort((a, b) => b.score - a.score);
@@ -142,6 +158,7 @@ export default function Dashboard({ data, onReset }) {
                 <div style={{ height: "240px" }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={sorted.slice(0, 8)}>
+                      <XAxis dataKey="name" tick={{fill: 'var(--muted)', fontSize: 9}} hide={false} />
                       <defs>
                         <linearGradient id="colorScore" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor="var(--fg)" stopOpacity={0.1}/>
@@ -177,7 +194,7 @@ export default function Dashboard({ data, onReset }) {
                          <span style={{ fontWeight: 600, fontSize: "14px" }}>{s.name}</span>
                          <div style={{ display: "flex", gap: "20px", alignItems: "center" }}>
                            <span className="mono" style={{ fontWeight: 800 }}>{s.score}%</span>
-                           <span className="badge" style={{ color: s.score >= 50 ? "inherit" : "#ef4444" }}>{s.score >= 50 ? "PASS" : "FAIL"}</span>
+                           <span className="badge" style={{ color: s.score >= 50 ? "inherit" : "#c0392b" }}>{s.score >= 50 ? "PASS" : "FAIL"}</span>
                          </div>
                        </div>
                      ))}
@@ -189,8 +206,9 @@ export default function Dashboard({ data, onReset }) {
                       <div style={{ height: "200px" }}>
                         <ResponsiveContainer width="100%" height="100%">
                           <BarChart data={sorted.slice(0, 5)}>
+                            <XAxis dataKey="name" tick={{fill: 'var(--muted)', fontSize: 10}} />
                             <Bar dataKey="score" fill="var(--fg)" radius={[4, 4, 0, 0]} />
-                            <Tooltip cursor={{fill: 'transparent'}} />
+                            <Tooltip cursor={{fill: 'transparent'}} contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--fg)', borderRadius: '8px' }} />
                           </BarChart>
                         </ResponsiveContainer>
                       </div>
@@ -239,8 +257,8 @@ export default function Dashboard({ data, onReset }) {
                   <ResponsiveContainer width="100%" height="100%">
                     <RadarChart data={behaviorRadar}>
                       <PolarGrid stroke="var(--border)" />
-                      <PolarAngleAxis dataKey="trait" tick={{ fill: "var(--muted)", fontSize: 10, fontWeight: 700 }} />
-                      <Radar dataKey="value" stroke="var(--fg)" fill="var(--fg)" fillOpacity={0.1} />
+                      <PolarAngleAxis dataKey="trait" tick={{ fill: "var(--fg)", fontSize: 11, fontWeight: 800 }} />
+                      <Radar dataKey="value" stroke="var(--accent)" fill="var(--accent)" fillOpacity={0.2} />
                     </RadarChart>
                   </ResponsiveContainer>
                 </div>
@@ -270,7 +288,7 @@ export default function Dashboard({ data, onReset }) {
           <div className="animate-in" style={{ display: "grid", gap: "24px" }}>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(350px, 1fr))", gap: "24px" }}>
               {recs.map((r, i) => (
-                <div key={i} style={{ ...S.card, display: "flex", gap: "20px", borderLeft: `6px solid ${r.type === 'improvement' ? '#ef4444' : '#3b82f6'}` }}>
+                <div key={i} style={{ ...S.card, display: "flex", gap: "20px", borderLeft: `6px solid ${r.type === 'improvement' ? '#c0392b' : '#0052A3'}` }}>
                    <div style={{ fontSize: "24px" }}>{r.type === 'improvement' ? "🎯" : "⚡"}</div>
                    <div>
                      <h4 style={{ fontWeight: 800, fontSize: "15px", marginBottom: "8px" }}>{r.subject} Insight</h4>
@@ -351,7 +369,7 @@ export default function Dashboard({ data, onReset }) {
                           width: viewMode === "list" ? "160px" : "100%",
                           paddingTop: viewMode === "list" ? "0" : "56.25%", 
                           height: viewMode === "list" ? "90px" : "auto",
-                          background: "#000",
+                          background: "#001a3a",
                           borderRadius: viewMode === "list" ? "8px" : "0",
                           flexShrink: 0,
                           overflow: "hidden"
@@ -388,7 +406,7 @@ export default function Dashboard({ data, onReset }) {
           </div>
           <div style={{ border: "1px solid var(--border)", padding: "16px", borderRadius: "12px", background: "rgba(0,0,0,0.01)" }}>
              <p style={{ fontSize: "13px", fontWeight: 800 }}>{data.student_name}</p>
-             <p style={{ fontSize: "10px", color: "var(--muted)", marginTop: "2px" }}>ID: {data.student_class} // BATCH_26</p>
+             <p style={{ fontSize: "10px", color: "var(--fg)", opacity: 0.7, marginTop: "2px", fontWeight: 600 }}>ID: {data.student_class} // BATCH_26</p>
           </div>
         </div>
 
@@ -411,7 +429,7 @@ export default function Dashboard({ data, onReset }) {
            <button onClick={handleDownload} style={{ width: "100%", padding: "12px", borderRadius: "12px", background: "var(--fg)", color: "var(--bg)", fontWeight: 700, fontSize: "13px", border: "none" }}>
              Download PDF
            </button>
-           <button onClick={onReset} style={{ color: "#991b1b", opacity: 0.8, background: "transparent", border: "none", fontSize: "12px", fontWeight: 600 }}>
+           <button onClick={onReset} style={{ color: "#c0392b", opacity: 0.8, background: "transparent", border: "none", fontSize: "12px", fontWeight: 600 }}>
              Terminate Session
            </button>
         </div>
@@ -446,7 +464,7 @@ export default function Dashboard({ data, onReset }) {
           .no-print { display: none !important; }
           body { background: white !important; color: black !important; }
           main { margin-left: 0 !important; padding: 0 !important; }
-          .card { border: 1px solid #eee !important; break-inside: avoid; }
+          .card { border: 1px solid var(--border) !important; break-inside: avoid; }
         }
       `}</style>
     </div>

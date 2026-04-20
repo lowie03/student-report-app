@@ -16,15 +16,29 @@ import google.generativeai as genai
 from pdf2image import convert_from_path
 from PIL import Image
 from dotenv import load_dotenv
+import hashlib
+import re
+import time
 
 # ── Load .env file ───────────────────────────────────────────────────────────
-# This reads your .env file and makes the keys available via os.environ
 load_dotenv()
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY", "")
 
 genai.configure(api_key=GEMINI_API_KEY)
+
+CACHE_DIR = os.path.join(os.path.dirname(__file__), ".analysis_cache")
+os.makedirs(CACHE_DIR, exist_ok=True)
+
+
+def get_file_hash(file_path):
+    """Generate SHA256 hash for a file to use as a cache key."""
+    sha256_hash = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        for byte_block in iter(lambda: f.read(4096), b""):
+            sha256_hash.update(byte_block)
+    return sha256_hash.hexdigest()
 
 
 # ── MASTER PROMPT (unchanged from your Colab) ───────────────────────────────
@@ -127,32 +141,64 @@ Return ONLY the JSON object, nothing else.
 """
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# STEP 1 — Load image (your Colab's load_report_image)
-# ══════════════════════════════════════════════════════════════════════════════
 def load_report_image(file_path):
     ext = os.path.splitext(file_path)[1].lower()
     if ext == ".pdf":
-        pages = convert_from_path(file_path, dpi=300)
+        pages = convert_from_path(file_path, dpi=150)
         image = pages[0]
     elif ext in [".jpg", ".jpeg", ".png"]:
         image = Image.open(file_path)
     else:
         raise ValueError(f"Unsupported file type: {ext}")
+
+    max_side = 2000
+    w, h = image.size
+    if max(w, h) > max_side:
+        scale = max_side / max(w, h)
+        image = image.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+
     return image
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# STEP 2 — Extract data via Gemini (your Colab's extract_report_data)
-# ══════════════════════════════════════════════════════════════════════════════
 def extract_report_data(image):
     import io
+
     buf = io.BytesIO()
     image.convert("RGB").save(buf, format="JPEG")
     image_bytes = buf.getvalue()
     image_part = {"mime_type": "image/jpeg", "data": image_bytes}
+
     model = genai.GenerativeModel('gemini-2.5-flash')
-    response = model.generate_content([MASTER_PROMPT, image_part])
+    print(f"\n[ANALYZER] Starting AI analysis for document...")
+
+    # Retry up to 5 times on rate-limit (429) or timeout (504, 503)
+    last_error = None
+    for attempt in range(5):
+        try:
+            response = model.generate_content([MASTER_PROMPT, image_part])
+            break
+        except Exception as e:
+            last_error = e
+            err = str(e)
+            
+            if any(code in err for code in ("429", "504", "503")):
+                retry_match = re.search(r"retry in (\d+\.?\d*)s", err)
+                if retry_match:
+                    wait_time = float(retry_match.group(1)) + 1.0
+                else:
+                    wait_time = (5 * (2 ** attempt))
+                
+                if attempt < 4:
+                    print(f"[ANALYZER] Rate limit (429) or busy (503/504) hit. Retrying in {wait_time:.1f}s... (Attempt {attempt + 1}/5)")
+                    time.sleep(wait_time)
+                    continue
+            raise
+    else:
+        print("[ANALYZER] All retry attempts failed.")
+        raise last_error
+
+    print("[ANALYZER] AI analysis successful!")
+
     raw = response.text.strip().replace("```json", "").replace("```", "").strip()
     try:
         data = json.loads(raw)
@@ -161,19 +207,14 @@ def extract_report_data(image):
         raise ValueError(f"Gemini did not return valid JSON. Raw output: {raw[:500]}")
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# STEP 3 — Performance Score (your Colab's calculate_performance_score)
-# ══════════════════════════════════════════════════════════════════════════════
 def calculate_performance_score(data):
     subjects   = data.get("subjects", [])
     behavior   = data.get("behavior", {}).get("extracted_ratings", {})
     attendance = data.get("attendance", {}).get("interpreted", {})
 
-    # Academic (60%)
     scores = [s["score"] for s in subjects if isinstance(s.get("score"), (int, float))]
     academic_component = sum(scores) / len(scores) if scores else 0
 
-    # Behaviour (25%)
     normalized_vals = [
         v["normalized_score"]
         for v in behavior.values()
@@ -185,7 +226,6 @@ def calculate_performance_score(data):
     else:
         behaviour_component = academic_component
 
-    # Attendance (15%)
     att_pct      = attendance.get("attendance_percentage")
     days_present = attendance.get("days_present")
     total_days   = attendance.get("total_school_days")
@@ -198,7 +238,6 @@ def calculate_performance_score(data):
     else:
         attendance_component = academic_component
 
-    # Weighted composite
     composite = (
         (academic_component  * 0.60) +
         (behaviour_component * 0.25) +
@@ -216,9 +255,6 @@ def calculate_performance_score(data):
     }
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# STEP 4 — Prediction engine (your Colab's predict_performance)
-# ══════════════════════════════════════════════════════════════════════════════
 def predict_performance(data, performance_score):
     avg             = data.get("average_score", 0)
     weak_subjects   = data.get("weak_subjects", [])
@@ -231,7 +267,6 @@ def predict_performance(data, performance_score):
     reasons    = []
     positives  = []
 
-    # Signal 1: Average score (max 6 points)
     if avg >= 80:
         positives.append(f"excellent overall average of {avg}%")
     elif avg >= 70:
@@ -249,7 +284,6 @@ def predict_performance(data, performance_score):
         risk_score += 6
         reasons.append(f"critically low average of {avg}% — urgent intervention needed")
 
-    # Signal 2: Weak subjects (max 6 points)
     weak_count   = len(weak_subjects)
     strong_count = len(strong_subjects)
 
@@ -266,247 +300,103 @@ def predict_performance(data, performance_score):
         reasons.append(f"failing 3 subjects: {', '.join(weak_subjects)}")
     elif weak_count >= 4:
         risk_score += 6
-        reasons.append(
-            f"failing {weak_count} subjects: {', '.join(weak_subjects)} — "
-            f"this is a critical number of failures"
-        )
+        reasons.append(f"failing {weak_count} subjects: {', '.join(weak_subjects)}")
 
     if strong_count >= 6:
         positives.append(f"excelling in {strong_count} subjects")
     elif strong_count >= 3:
         positives.append(f"performing well in {strong_count} subjects")
 
-    # Signal 3: Score consistency (max 2 points)
     if subjects:
         score_vals = [s["score"] for s in subjects if isinstance(s.get("score"), (int, float))]
         if len(score_vals) >= 2:
             score_range = max(score_vals) - min(score_vals)
             if score_range >= 50:
                 risk_score += 2
-                reasons.append(
-                    f"very inconsistent results (lowest: {min(score_vals)}, "
-                    f"highest: {max(score_vals)}, gap: {score_range} points)"
-                )
+                reasons.append(f"very inconsistent results (gap: {score_range} points)")
             elif score_range >= 35:
                 risk_score += 1
-                reasons.append(
-                    f"inconsistent results across subjects "
-                    f"(range: {min(score_vals)}–{max(score_vals)})"
-                )
+                reasons.append(f"inconsistent results across subjects")
 
-    # Signal 4: Behaviour (max 4 points)
-    extracted     = behavior_raw.get("extracted_ratings", {})
-    low_behavior  = []
-    high_behavior = []
-
-    HIGH_IMPACT_KEYWORDS = {
-        "attention", "attentive", "focus", "concentrate",
-        "participat", "engage", "attitude", "conduct", "behavior", "behaviour"
-    }
+    extracted = behavior_raw.get("extracted_ratings", {})
+    HIGH_IMPACT_KEYWORDS = {"attention", "attentive", "focus", "concentrate", "participat", "engage", "attitude", "conduct", "behavior", "behaviour"}
 
     for trait, values in extracted.items():
         normalized = values.get("normalized_score")
-        raw        = values.get("raw_value", "")
-        if normalized is None:
-            continue
+        raw = values.get("raw_value", "")
+        if normalized is None: continue
         is_high_impact = any(kw in trait.lower() for kw in HIGH_IMPACT_KEYWORDS)
         weight = 2 if is_high_impact else 1
-
         if normalized == 1:
             risk_score += weight + 1
-            low_behavior.append(f"{trait}: {raw} (very poor)")
         elif normalized == 2:
             risk_score += weight
-            low_behavior.append(f"{trait}: {raw}")
-        elif normalized >= 4:
-            high_behavior.append(f"{trait}: {raw}")
 
-    if low_behavior:
-        reasons.append(f"low behavioural ratings — {'; '.join(low_behavior)}")
-    if high_behavior:
-        positives.append(f"strong character ratings — {'; '.join(high_behavior)}")
-
-    # Signal 5: Attendance (max 4 points)
-    att_pct      = attendance.get("attendance_percentage")
-    days_absent  = attendance.get("days_absent")
-    days_present = attendance.get("days_present")
-    total_days   = attendance.get("total_school_days")
-
-    if att_pct is None and days_present and total_days:
-        att_pct = round((days_present / total_days) * 100, 1)
-
+    att_pct = attendance.get("attendance_percentage")
     if att_pct is not None:
-        absent_str = f"{int(days_absent)} sessions missed" if days_absent else ""
-        if att_pct < 60:
-            risk_score += 4
-            reasons.append(
-                f"dangerously low attendance of {att_pct}%"
-                + (f" — {absent_str}" if absent_str else "")
-                + ". The student is missing too much school to keep up"
-            )
-        elif att_pct < 70:
-            risk_score += 3
-            reasons.append(
-                f"severely low attendance of {att_pct}%"
-                + (f" ({absent_str})" if absent_str else "")
-            )
-        elif att_pct < 80:
-            risk_score += 2
-            reasons.append(
-                f"below-average attendance of {att_pct}%"
-                + (f" ({absent_str})" if absent_str else "")
-            )
-        elif att_pct < 90:
-            risk_score += 1
-            reasons.append(f"attendance of {att_pct}% could be improved")
-        else:
-            positives.append(f"excellent attendance of {att_pct}%")
+        if att_pct < 60: risk_score += 4
+        elif att_pct < 70: risk_score += 3
+        elif att_pct < 80: risk_score += 2
+        elif att_pct < 90: risk_score += 1
 
-    # Factor in composite score
     composite = performance_score["overall_score"]
-    if composite < 40:
-        risk_score += 2
-        reasons.append(f"composite performance score is very low ({composite}/100)")
-    elif composite < 55:
-        risk_score += 1
-        reasons.append(f"composite performance score is below average ({composite}/100)")
-    elif composite >= 75:
-        positives.append(f"strong composite performance score of {composite}/100")
+    if composite < 40: risk_score += 2
+    elif composite < 55: risk_score += 1
 
-    # Final label
     if risk_score >= 13:
-        label   = "Severely At Risk"
-        summary = (
-            "This student is severely at risk and requires immediate intervention. "
-            "Critical issues across multiple areas are combining to seriously "
-            "threaten their academic future."
-        )
+        label, summary = "Severely At Risk", "This student is severely at risk."
     elif risk_score >= 8:
-        label   = "At Risk"
-        summary = (
-            "The student is at risk of declining performance next term. "
-            "Multiple warning signs indicate they need targeted support "
-            "before the next term begins."
-        )
+        label, summary = "At Risk", "The student is at risk."
     elif risk_score >= 4:
-        label   = "Needs Improvement"
-        summary = (
-            "The student is managing but has clear areas that need attention. "
-            "Addressing these now will prevent further decline next term."
-        )
+        label, summary = "Needs Improvement", "The student managing but has clear areas that need attention."
     elif strong_count >= 5 and avg >= 70 and risk_score <= 1:
-        label   = "High Performer"
-        summary = (
-            "The student is performing at a high level and is on track "
-            "to excel further next term."
-        )
+        label, summary = "High Performer", "The student is performing at a high level."
     else:
-        label   = "On Track"
-        summary = "The student is likely to maintain steady performance next term."
+        label, summary = "On Track", "The student is likely to maintain steady performance."
 
     return {
-        "label":      label,
-        "summary":    summary,
-        "risk_score": risk_score,
-        "risk_max":   20,
-        "signals": {
-            "academic_flags":   reasons,
-            "positive_signals": positives
-        }
+        "label": label, "summary": summary, "risk_score": risk_score, "risk_max": 20,
+        "signals": {"academic_flags": reasons, "positive_signals": positives}
     }
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# STEP 5 — YouTube API (your Colab's fetch_youtube_videos)
-# ══════════════════════════════════════════════════════════════════════════════
 def fetch_youtube_videos(query, max_results=3):
-    if not YOUTUBE_API_KEY:
-        return []
-
+    if not YOUTUBE_API_KEY: return []
     url = "https://www.googleapis.com/youtube/v3/search"
-    params = {
-        "part":       "snippet",
-        "q":          query,
-        "type":       "video",
-        "maxResults": max_results,
-        "key":        YOUTUBE_API_KEY,
-        "relevanceLanguage": "en",
-        "safeSearch": "strict"
-    }
-
+    params = {"part": "snippet", "q": query, "type": "video", "maxResults": max_results, "key": YOUTUBE_API_KEY, "relevanceLanguage": "en", "safeSearch": "strict"}
     try:
         response = requests.get(url, params=params, timeout=10)
         response.raise_for_status()
         items = response.json().get("items", [])
-        videos = []
-        for item in items:
-            vid_id  = item["id"]["videoId"]
-            title   = item["snippet"]["title"]
-            thumb   = item["snippet"]["thumbnails"]["default"]["url"]
-            videos.append({
-                "title":     title,
-                "url":       f"https://www.youtube.com/watch?v={vid_id}",
-                "thumbnail": thumb
-            })
-        return videos
-    except Exception:
-        return []
+        return [{"title": i["snippet"]["title"], "url": f"https://www.youtube.com/watch?v={i['id']['videoId']}", "thumbnail": i["snippet"]["thumbnails"]["default"]["url"]} for i in items]
+    except Exception: return []
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# STEP 6 — Recommendations (your Colab's generate_recommendations + helpers)
-# ══════════════════════════════════════════════════════════════════════════════
 def _weak_advice(subject, score, remark):
     lines = [f"{subject} needs urgent attention (score: {score}). "]
-    if remark:
-        lines.append(f"Your teacher noted: \"{remark}\". ")
+    if remark: lines.append(f"Your teacher noted: \"{remark}\". ")
     s = subject.lower()
     if any(w in s for w in ["math", "mathematics", "algebra", "calculus", "arithmetic"]):
-        lines.append("Work through past questions daily and do not skip foundational topics. Focus on one concept at a time and use YouTube for worked examples.")
-    elif any(w in s for w in ["english", "language", "literature", "writing", "reading", "comprehension"]):
-        lines.append("Read one page daily to build comprehension. Practice writing short paragraphs and focus on grammar rules and vocabulary.")
-    elif any(w in s for w in ["science", "biology", "chemistry", "physics", "basic science"]):
-        lines.append("Use diagrams and videos to understand concepts visually. Focus on understanding over memorisation and watch experiment videos online.")
-    elif any(w in s for w in ["history", "social", "citizenship", "civic", "geography"]):
-        lines.append("Create summary sheets per topic and relate events to real life. Review past exam questions to understand what is expected.")
-    elif any(w in s for w in ["french", "arabic", "yoruba", "igbo", "hausa"]):
-        lines.append("Practice at least 10 minutes daily. Use flashcards for vocabulary and watch simple videos in that language.")
-    elif any(w in s for w in ["computer", "digital", "ict", "technology", "literacy"]):
-        lines.append("Practice on a computer whenever possible. Search YouTube for the specific topic you are struggling with.")
-    elif any(w in s for w in ["art", "creative", "craft", "cultural"]):
-        lines.append("Practice regularly and study the examples given in class. Try to replicate techniques at home.")
-    elif any(w in s for w in ["physical", "health", "sport", "pe", "exercise"]):
-        lines.append("Review theory components carefully as these are tested in exams. Stay consistent with physical practice.")
-    elif any(w in s for w in ["religious", "christian", "islamic", "bible", "moral"]):
-        lines.append("Read and summarise key teachings regularly. Focus on understanding moral lessons and review past exam questions.")
-    elif any(w in s for w in ["vocation", "vocational", "pre-voc", "prevoc", "handwork"]):
-        lines.append("Focus on the practical skills and practise them regularly. Review written components using class notes.")
+        lines.append("Work through past questions daily and do not skip foundational topics.")
+    elif any(w in s for w in ["english", "language", "literature", "writing"]):
+        lines.append("Read one page daily to build comprehension. Practice writing short paragraphs.")
+    elif any(w in s for w in ["science", "biology", "chemistry", "physics"]):
+        lines.append("Use diagrams and videos to understand concepts visually.")
     else:
-        lines.append("Review class notes and past questions regularly. Ask your teacher for extra guidance on the hardest topics.")
+        lines.append("Review class notes and past questions regularly.")
     return "".join(lines)
 
 
 def _strong_advice(subject, score, remark):
     lines = [f"Excellent performance in {subject} (score: {score}). "]
-    if remark:
-        lines.append(f"Your teacher noted: \"{remark}\". ")
+    if remark: lines.append(f"Your teacher noted: \"{remark}\". ")
     s = subject.lower()
     if any(w in s for w in ["math", "mathematics", "algebra", "calculus"]):
-        lines.append("Challenge yourself with advanced problem types — word problems, logic puzzles, or introductory algebra and statistics.")
+        lines.append("Challenge yourself with advanced problem types.")
     elif any(w in s for w in ["english", "language", "literature", "writing"]):
-        lines.append("Push further by writing essays or book reviews. Read more challenging texts to strengthen comprehension.")
-    elif any(w in s for w in ["science", "biology", "chemistry", "physics"]):
-        lines.append("Explore beyond the curriculum with science documentaries or simple experiments. This foundation will serve you well in senior school.")
-    elif any(w in s for w in ["history", "social", "citizenship", "geography"]):
-        lines.append("Deepen understanding by reading about current events and connecting them to what you have learned.")
-    elif any(w in s for w in ["french", "language", "igbo", "yoruba", "hausa"]):
-        lines.append("Maintain your strength by practising conversation and writing. Try reading simple books in this language.")
-    elif any(w in s for w in ["computer", "digital", "ict", "technology"]):
-        lines.append("Explore basic coding or digital projects. Platforms like Scratch or Code.org are great next steps.")
-    elif any(w in s for w in ["art", "creative", "cultural"]):
-        lines.append("Keep experimenting with different styles and techniques. Consider entering school competitions or showcasing your work.")
+        lines.append("Push further by writing essays or book reviews.")
     else:
-        lines.append("Keep up the excellent work. Consider helping peers who struggle — teaching others deepens your own understanding.")
+        lines.append("Keep up the excellent work.")
     return "".join(lines)
 
 
@@ -515,122 +405,62 @@ def generate_recommendations(data, prediction):
     weak_list   = data.get("weak_subjects", [])
     strong_list = data.get("strong_subjects", [])
     subject_map = {s["name"]: s for s in subjects}
-
     recs = []
-
     for name in weak_list:
-        s       = subject_map.get(name, {})
-        score   = s.get("score", "N/A")
-        remark  = s.get("teacher_remark")
-        query   = f"{name} tutorial lesson for students"
-        videos  = fetch_youtube_videos(query, max_results=3)
-        advice  = _weak_advice(name, score, remark)
-
-        recs.append({
-            "subject":        name,
-            "score":          score,
-            "type":           "improvement",
-            "teacher_remark": remark,
-            "advice":         advice,
-            "youtube_query":  query,
-            "videos":         videos
-        })
-
+        s = subject_map.get(name, {})
+        recs.append({"subject": name, "score": s.get("score", "N/A"), "type": "improvement", "teacher_remark": s.get("teacher_remark"), "advice": _weak_advice(name, s.get("score", "N/A"), s.get("teacher_remark")), "youtube_query": f"{name} tutorial lesson", "videos": fetch_youtube_videos(f"{name} tutorial", 3)})
     for name in strong_list:
-        s       = subject_map.get(name, {})
-        score   = s.get("score", "N/A")
-        remark  = s.get("teacher_remark")
-        query   = f"advanced {name} for students"
-        videos  = fetch_youtube_videos(query, max_results=2)
-        advice  = _strong_advice(name, score, remark)
-
-        recs.append({
-            "subject":        name,
-            "score":          score,
-            "type":           "enrichment",
-            "teacher_remark": remark,
-            "advice":         advice,
-            "youtube_query":  query,
-            "videos":         videos
-        })
-
+        s = subject_map.get(name, {})
+        recs.append({"subject": name, "score": s.get("score", "N/A"), "type": "enrichment", "teacher_remark": s.get("teacher_remark"), "advice": _strong_advice(name, s.get("score", "N/A"), s.get("teacher_remark")), "youtube_query": f"advanced {name} lesson", "videos": fetch_youtube_videos(f"advanced {name}", 2)})
     return recs
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# MASTER FUNCTION — called by FastAPI's /upload endpoint
-# ══════════════════════════════════════════════════════════════════════════════
 def run_pipeline(file_path: str) -> dict:
-    """
-    This is the ONE function FastAPI calls.
-    It chains all steps and returns a single JSON dict
-    shaped exactly how the React dashboard expects it.
-    """
-    # Run your existing pipeline
-    image           = load_report_image(file_path)
-    data            = extract_report_data(image)
-    perf_score      = calculate_performance_score(data)
-    prediction      = predict_performance(data, perf_score)
+    file_hash = get_file_hash(file_path)
+    cache_path = os.path.join(CACHE_DIR, f"{file_hash}.json")
+
+    if os.path.exists(cache_path):
+        try:
+            with open(cache_path, "r") as f:
+                return json.load(f)
+        except Exception: pass
+
+    image = load_report_image(file_path)
+    data = extract_report_data(image)
+    perf_score = calculate_performance_score(data)
+    prediction = predict_performance(data, perf_score)
     recommendations = generate_recommendations(data, prediction)
 
-    # ── Build the response for the React dashboard ───────────────────────────
-    subjects     = data.get("subjects", [])
     behavior_raw = data.get("behavior", {})
-    attendance   = data.get("attendance", {}).get("interpreted", {})
+    attendance = data.get("attendance", {}).get("interpreted", {})
+    behavior_list = [{"trait": t, "rating": v.get("normalized_score", 0), "raw_value": v.get("raw_value", "")} for t, v in behavior_raw.get("extracted_ratings", {}).items()]
 
-    # Build behavior list for the dashboard
-    behavior_list = []
-    for trait, values in behavior_raw.get("extracted_ratings", {}).items():
-        behavior_list.append({
-            "trait":  trait,
-            "rating": values.get("normalized_score", 0),
-            "raw_value": values.get("raw_value", "")
-        })
-
-    return {
-        # Student info
+    result = {
         "student_name":  data.get("student", {}).get("name", "Student"),
         "student_class": data.get("student", {}).get("class", ""),
         "term":          data.get("student", {}).get("term", ""),
-
-        # Subjects
-        "subjects": [
-            {
-                "name":           s["name"],
-                "score":          s["score"],
-                "remark":         s.get("teacher_remark") or s.get("grade") or "N/A"
-            }
-            for s in subjects
-        ],
-        "average_score":   data.get("average_score", 0),
-        "weak_subjects":   data.get("weak_subjects", []),
+        "subjects": [{"name": s["name"], "score": s["score"], "remark": s.get("teacher_remark") or s.get("grade") or "N/A"} for s in data.get("subjects", [])],
+        "average_score": data.get("average_score", 0),
+        "weak_subjects": data.get("weak_subjects", []),
         "strong_subjects": data.get("strong_subjects", []),
-
-        # Performance score
-        "performance_score":    perf_score["overall_score"],
-        "academic_component":   perf_score["breakdown"]["academic_score"],
-        "behaviour_component":  perf_score["breakdown"]["behaviour_score"],
+        "performance_score": perf_score["overall_score"],
+        "academic_component": perf_score["breakdown"]["academic_score"],
+        "behaviour_component": perf_score["breakdown"]["behaviour_score"],
         "attendance_component": perf_score["breakdown"]["attendance_score"],
-
-        # Behaviour
         "behavior": behavior_list,
-
-        # Attendance
-        "attendance": {
-            "present":    attendance.get("days_present", 0),
-            "absent":     attendance.get("days_absent", 0),
-            "total":      attendance.get("total_school_days", 0),
-            "percentage": attendance.get("attendance_percentage", 0),
-        },
-
-        # Prediction
-        "prediction":  prediction["label"],
-        "risk_score":  prediction["risk_score"],
-        "risk_max":    prediction["risk_max"],
-        "summary":     prediction["summary"],
-        "warnings":    prediction["signals"]["academic_flags"],
-        "strengths":   prediction["signals"]["positive_signals"],
-
-        # Recommendations (includes YouTube videos)
+        "attendance": {"present": attendance.get("days_present", 0), "absent": attendance.get("days_absent", 0), "total": attendance.get("total_school_days", 0), "percentage": attendance.get("attendance_percentage", 0)},
+        "prediction": prediction["label"],
+        "risk_score": prediction["risk_score"],
+        "risk_max": prediction["risk_max"],
+        "summary": prediction["summary"],
+        "warnings": prediction["signals"]["academic_flags"],
+        "strengths": prediction["signals"]["positive_signals"],
         "recommendations": recommendations,
     }
+
+    try:
+        with open(cache_path, "w") as f:
+            json.dump(result, f)
+    except Exception: pass
+
+    return result

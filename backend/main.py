@@ -87,7 +87,13 @@ async def upload_and_analyze(file: UploadFile = File(...)):
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+        err_msg = str(e)
+        if "429" in err_msg:
+            raise HTTPException(
+                status_code=429,
+                detail="Google Gemini is currently busy (Rate Limit). We attempted to retry several times, but the limit is still active. Please wait a few minutes before trying again."
+            )
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {err_msg}")
     finally:
         # Clean up the temp file
         if os.path.exists(file_path):

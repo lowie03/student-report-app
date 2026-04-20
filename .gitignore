@@ -7,8 +7,9 @@ __pycache__/
 venv/
 .venv/
 
-# ── Uploads (temp files) ─────────────────────
+# ── Uploads & cache (temp/generated) ─────────
 backend/uploads/
+backend/.analysis_cache/
 
 # ── Node / React ──────────────────────────────
 node_modules/

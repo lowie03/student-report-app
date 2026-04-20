@@ -158,12 +158,12 @@ export default function App() {
       {error && (
         <div style={{ 
           marginTop: "var(--space-4)", 
-          color: "#ef4444", 
+          color: "#c0392b", 
           fontSize: "14px", 
-          background: "#fee2e2", 
+          background: "rgba(192, 57, 43, 0.08)", 
           padding: "8px 16px", 
           borderRadius: "8px",
-          border: "1px solid #fecaca"
+          border: "1px solid rgba(192, 57, 43, 0.2)"
         }}>
           {error}
         </div>
