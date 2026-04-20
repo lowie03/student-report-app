@@ -1,10 +1,13 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import axios from "axios";
 import Dashboard from "./Dashboard";
 
 const API_URL = "http://localhost:8000";
 
 export default function App() {
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', 'dark');
+  }, []);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -63,222 +66,118 @@ export default function App() {
     return <Dashboard data={data} onReset={() => { setData(null); setFileName(""); setProgress(0); }} />;
   }
 
-  // ── Upload screen ───────────────────────────────────────────────────────
   return (
-    <div style={{
-      fontFamily: "'Outfit', system-ui, sans-serif",
-      minHeight: "100vh",
-      background: "#06080F",
-      color: "#E8ECF4",
-      display: "flex",
+    <div className="animate-in" style={{ 
+      minHeight: "100vh", 
+      display: "flex", 
       flexDirection: "column",
       alignItems: "center",
       justifyContent: "center",
-      padding: 24,
-      position: "relative",
-      overflow: "hidden",
+      padding: "var(--space-4)"
     }}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-
-        .upload-zone {
-          position: relative;
-          width: 100%;
-          max-width: 520px;
-          border: 2px dashed #2A3352;
-          border-radius: 20px;
-          padding: 56px 40px;
-          text-align: center;
-          cursor: pointer;
-          transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-          background: rgba(16, 20, 36, 0.6);
-          backdrop-filter: blur(12px);
-        }
-        .upload-zone:hover, .upload-zone.drag-over {
-          border-color: #5B8DEF;
-          background: rgba(91, 141, 239, 0.06);
-          transform: translateY(-2px);
-          box-shadow: 0 12px 40px rgba(91, 141, 239, 0.12);
-        }
-        .upload-zone.drag-over {
-          border-style: solid;
-        }
-
-        .glow-orb {
-          position: absolute;
-          border-radius: 50%;
-          filter: blur(80px);
-          opacity: 0.15;
-          pointer-events: none;
-        }
-
-        .upload-icon {
-          width: 72px;
-          height: 72px;
-          margin: 0 auto 24px;
-          border-radius: 18px;
-          background: linear-gradient(135deg, #5B8DEF 0%, #7C5BEF 100%);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 32px;
-          box-shadow: 0 8px 32px rgba(91, 141, 239, 0.25);
-        }
-
-        .progress-bar-track {
-          width: 100%;
-          max-width: 520px;
-          height: 6px;
-          background: #1A1F33;
-          border-radius: 3px;
-          margin-top: 24px;
-          overflow: hidden;
-        }
-        .progress-bar-fill {
-          height: 100%;
-          border-radius: 3px;
-          background: linear-gradient(90deg, #5B8DEF, #7C5BEF);
-          transition: width 0.4s ease-out;
-        }
-
-        .loading-pulse {
-          animation: pulse 1.8s ease-in-out infinite;
-        }
-        @keyframes pulse {
-          0%, 100% { opacity: 0.5; }
-          50% { opacity: 1; }
-        }
-
-        .error-box {
-          margin-top: 20px;
-          padding: 14px 20px;
-          border-radius: 12px;
-          background: rgba(239, 91, 91, 0.1);
-          border: 1px solid rgba(239, 91, 91, 0.25);
-          color: #EF5B5B;
-          font-size: 14px;
-          max-width: 520px;
-          width: 100%;
-        }
-
-        .format-tag {
-          display: inline-flex;
-          padding: 4px 12px;
-          border-radius: 8px;
-          font-size: 12px;
-          font-weight: 500;
-          background: rgba(91, 141, 239, 0.1);
-          color: #8BAEF5;
-          letter-spacing: 0.5px;
-        }
-      `}</style>
-
-      {/* Background orbs */}
-      <div className="glow-orb" style={{ width: 400, height: 400, top: -100, left: -100, background: "#5B8DEF" }} />
-      <div className="glow-orb" style={{ width: 300, height: 300, bottom: -60, right: -60, background: "#7C5BEF" }} />
-
-      {/* Title */}
-      <div style={{ textAlign: "center", marginBottom: 40, position: "relative", zIndex: 1 }}>
-        <h1 style={{
-          fontSize: 36,
-          fontWeight: 700,
-          letterSpacing: -1,
-          marginBottom: 10,
-          background: "linear-gradient(135deg, #E8ECF4 0%, #8BAEF5 100%)",
-          WebkitBackgroundClip: "text",
-          WebkitTextFillColor: "transparent",
+      <header style={{ textAlign: "center", marginBottom: "var(--space-6)" }}>
+        <div style={{ 
+          display: "inline-flex", 
+          padding: "6px 12px", 
+          borderRadius: "99px", 
+          background: "var(--ring)", 
+          fontSize: "12px", 
+          fontWeight: 600, 
+          color: "var(--muted)",
+          marginBottom: "var(--space-3)",
+          border: "1px solid var(--border)"
         }}>
-          Student Report Analyzer
+          NEW VERSION 2.0 AVAILABLE
+        </div>
+        <h1 style={{ fontSize: "56px", lineHeight: 1.1, marginBottom: "var(--space-3)" }}>
+          Insights from every <br/> scholastic record.
         </h1>
-        <p style={{ fontSize: 16, color: "#6B7A99", fontWeight: 400, maxWidth: 420, lineHeight: 1.5 }}>
-          Upload a report card and get AI-powered performance analysis, predictions, and personalized recommendations
+        <p style={{ color: "var(--muted)", maxWidth: "500px", margin: "0 auto", fontSize: "18px" }}>
+          Upload your students academic report and let our AI transform raw data into actionable educational strategies.
         </p>
+      </header>
+
+      <div 
+        className="card"
+        style={{ 
+          width: "100%", 
+          maxWidth: "600px", 
+          padding: "var(--space-6)",
+          textAlign: "center",
+          cursor: "pointer",
+          borderStyle: dragOver ? "solid" : "dashed",
+          borderColor: dragOver ? "var(--fg)" : "var(--border)",
+          background: dragOver ? "var(--ring)" : "var(--surface)",
+          boxShadow: "0 20px 40px -10px rgba(0,0,0,0.05)"
+        }}
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={handleDrop}
+        onClick={() => document.getElementById("file-input").click()}
+      >
+        <input id="file-input" type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={handleFileSelect} style={{ display: "none" }} />
+        
+        <div style={{ 
+          width: 64, 
+          height: 64, 
+          background: "var(--fg)", 
+          color: "var(--bg)", 
+          borderRadius: "16px", 
+          display: "flex", 
+          alignItems: "center", 
+          justifyContent: "center", 
+          margin: "0 auto var(--space-4)",
+          fontSize: 24
+        }}>
+          {loading ? (
+            <svg className="animate-spin" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+            </svg>
+          ) : "+"}
+        </div>
+        
+        <h2 style={{ fontSize: 20, marginBottom: "4px" }}>
+          {loading ? "Analyzing Document..." : "Drop report to begin"}
+        </h2>
+        <p style={{ color: "var(--muted)", fontSize: 14 }}>
+          {loading ? "This usually takes less than 10 seconds" : "PDF, PNG or JPG up to 10MB"}
+        </p>
+
+        {loading && (
+          <div style={{ marginTop: "var(--space-4)", width: "100%", maxWidth: "300px", margin: "var(--space-4) auto 0" }}>
+            <div style={{ height: 4, background: "var(--border)", borderRadius: 2, overflow: "hidden" }}>
+              <div style={{ height: "100%", background: "var(--fg)", width: `${progress}%`, transition: "width 0.3s" }} />
+            </div>
+            <p className="mono" style={{ fontSize: 10, marginTop: "8px", color: "var(--muted)" }}>
+              {progress}% PROCESSED
+            </p>
+          </div>
+        )}
       </div>
 
-      {/* Upload zone */}
-      {!loading ? (
-        <div
-          className={`upload-zone ${dragOver ? "drag-over" : ""}`}
-          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={handleDrop}
-          onClick={() => document.getElementById("file-input").click()}
-        >
-          <input
-            id="file-input"
-            type="file"
-            accept=".pdf,.jpg,.jpeg,.png"
-            onChange={handleFileSelect}
-            style={{ display: "none" }}
-          />
-
-          <div className="upload-icon">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="17 8 12 3 7 8" />
-              <line x1="12" y1="3" x2="12" y2="15" />
-            </svg>
-          </div>
-
-          <p style={{ fontSize: 17, fontWeight: 600, marginBottom: 8, color: "#C8D1E4" }}>
-            {dragOver ? "Drop your file here" : "Drag & drop your report card"}
-          </p>
-          <p style={{ fontSize: 14, color: "#5A6580", marginBottom: 20 }}>
-            or click to browse files
-          </p>
-
-          <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
-            <span className="format-tag">PDF</span>
-            <span className="format-tag">JPG</span>
-            <span className="format-tag">PNG</span>
-          </div>
-        </div>
-      ) : (
-        /* Loading state */
-        <div style={{ width: "100%", maxWidth: 520, textAlign: "center", position: "relative", zIndex: 1 }}>
-          <div className="upload-icon" style={{ margin: "0 auto 20px" }}>
-            <svg className="loading-pulse" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10" />
-              <path d="M12 6v6l4 2" />
-            </svg>
-          </div>
-
-          <p style={{ fontSize: 17, fontWeight: 600, marginBottom: 6, color: "#C8D1E4" }}>
-            Analyzing {fileName}
-          </p>
-          <p className="loading-pulse" style={{ fontSize: 14, color: "#5A6580", marginBottom: 16 }}>
-            {progress < 40
-              ? "Uploading report card..."
-              : progress < 70
-              ? "Extracting data with Gemini AI..."
-              : progress < 90
-              ? "Running predictions and scoring..."
-              : "Building your dashboard..."}
-          </p>
-
-          <div className="progress-bar-track">
-            <div className="progress-bar-fill" style={{ width: `${Math.min(progress + 50, 95)}%` }} />
-          </div>
-        </div>
-      )}
-
       {error && (
-        <div className="error-box">
+        <div style={{ 
+          marginTop: "var(--space-4)", 
+          color: "#ef4444", 
+          fontSize: "14px", 
+          background: "#fee2e2", 
+          padding: "8px 16px", 
+          borderRadius: "8px",
+          border: "1px solid #fecaca"
+        }}>
           {error}
         </div>
       )}
 
-      {/* Footer */}
-      <p style={{
-        position: "absolute",
-        bottom: 24,
-        fontSize: 12,
-        color: "#3A4360",
-        letterSpacing: 0.5,
-      }}>
-        Powered by Gemini AI + YouTube Data API
-      </p>
+      <footer style={{ marginTop: "var(--space-6)", color: "var(--muted)", fontSize: "12px", borderTop: "1px solid var(--border)", paddingTop: "var(--space-4)", width: "100%", textAlign: "center" }}>
+        © 2026 ARCHIVE LABS. PRIVACY COMPLIANT. DATA SECURE.
+      </footer>
+
+      <style>{`
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .animate-spin { animation: spin 1s linear infinite; }
+      `}</style>
     </div>
   );
 }
+
