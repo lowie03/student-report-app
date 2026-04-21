@@ -161,13 +161,6 @@ def load_report_image(file_path):
 
 
 def extract_report_data(image):
-    import io
-
-    buf = io.BytesIO()
-    image.convert("RGB").save(buf, format="JPEG")
-    image_bytes = buf.getvalue()
-    image_part = {"mime_type": "image/jpeg", "data": image_bytes}
-
     model = genai.GenerativeModel('gemini-2.5-flash')
     print(f"\n[ANALYZER] Starting AI analysis for document...")
 
@@ -175,7 +168,10 @@ def extract_report_data(image):
     last_error = None
     for attempt in range(5):
         try:
-            response = model.generate_content([MASTER_PROMPT, image_part])
+            response = model.generate_content(
+                [MASTER_PROMPT, image.convert("RGB")],
+                request_options={"timeout": 120},
+            )
             break
         except Exception as e:
             last_error = e

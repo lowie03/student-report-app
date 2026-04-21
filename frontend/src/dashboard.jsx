@@ -2,7 +2,7 @@ import { useState } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Cell,
   Tooltip, RadarChart, Radar, PolarGrid,
-  PolarAngleAxis, PieChart, Pie, AreaChart, Area,
+  PolarAngleAxis, PolarRadiusAxis, PieChart, Pie, AreaChart, Area,
 } from "recharts";
 
 const S = {
@@ -80,6 +80,14 @@ const ICONS = {
   learning: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m16 6 4 14M12 6v14M8 8v12M4 4v16"></path></svg>,
 };
 
+function getGradeTier(score) {
+  if (score >= 80) return { label: "DISTINCTION", color: "#27ae60" };
+  if (score >= 70) return { label: "MERIT", color: "#2980b9" };
+  if (score >= 60) return { label: "AVERAGE", color: "#f39c12" };
+  if (score >= 50) return { label: "PASS", color: "var(--muted)" };
+  return { label: "FAIL", color: "#c0392b" };
+}
+
 export default function Dashboard({ data, onReset }) {
   const [activeTab, setActiveTab] = useState("overview");
   const [viewMode, setViewMode] = useState("grid");
@@ -101,9 +109,9 @@ export default function Dashboard({ data, onReset }) {
   ];
 
   const behaviorRadar = behavior.map(b => ({
-    trait: b.trait.length > 10 ? b.trait.substring(0, 8) + ".." : b.trait,
+    trait: b.trait.length > 16 ? b.trait.substring(0, 14) + ".." : b.trait,
     value: b.rating,
-    full: 5
+    fullMark: 5
   }));
 
   const groupedResources = recs.reduce((acc, r) => {
@@ -132,7 +140,34 @@ export default function Dashboard({ data, onReset }) {
                   <p style={{ fontSize: "11px", color: "var(--muted)", marginTop: "4px" }}>{stat.sub}</p>
                 </div>
               ))}
+              {/* Risk score card spans full width below */}
             </div>
+
+            {/* Risk Score Banner */}
+            {(() => {
+              const riskScore = data.risk_score ?? null;
+              const riskMax = data.risk_max || 20;
+              const riskPct = riskScore !== null ? Math.round((riskScore / riskMax) * 100) : null;
+              const riskColor = riskPct === null ? "var(--muted)" : riskPct >= 65 ? "#c0392b" : riskPct >= 40 ? "#e67e22" : riskPct >= 20 ? "#f39c12" : "#27ae60";
+              return riskScore !== null ? (
+                <div style={{ ...S.card, display: "flex", alignItems: "center", gap: "32px", borderLeft: `6px solid ${riskColor}` }}>
+                  <div style={{ minWidth: "120px" }}>
+                    <p style={{ fontSize: "10px", fontWeight: 800, color: "var(--muted)", letterSpacing: "0.1em", marginBottom: "4px" }}>RISK LEVEL</p>
+                    <div style={{ fontSize: "28px", fontWeight: 900, color: riskColor }}>{prediction}</div>
+                    <p style={{ fontSize: "11px", color: "var(--muted)", marginTop: "2px" }}>{riskScore}/{riskMax} risk points</p>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", color: "var(--muted)", marginBottom: "6px" }}>
+                      <span>Low Risk</span><span>High Risk</span>
+                    </div>
+                    <div style={{ height: "10px", background: "var(--border)", borderRadius: "5px", overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: `${riskPct}%`, background: riskColor, borderRadius: "5px", transition: "width 0.8s ease" }} />
+                    </div>
+                    <p style={{ fontSize: "12px", color: "var(--fg)", marginTop: "10px", lineHeight: 1.5 }}>{data.summary}</p>
+                  </div>
+                </div>
+              ) : null;
+            })()}
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1.5fr", gap: "24px" }}>
               <div style={S.card}>
@@ -188,16 +223,27 @@ export default function Dashboard({ data, onReset }) {
              <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: "24px" }}>
                 <div style={S.card}>
                    <p style={S.sectionHeader}>Full Subject Breakdown</p>
-                   <div style={{ display: "grid", gap: "12px" }}>
-                     {sorted.map((s, i) => (
-                       <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", background: "rgba(0,0,0,0.01)", borderRadius: "12px" }}>
-                         <span style={{ fontWeight: 600, fontSize: "14px" }}>{s.name}</span>
-                         <div style={{ display: "flex", gap: "20px", alignItems: "center" }}>
-                           <span className="mono" style={{ fontWeight: 800 }}>{s.score}%</span>
-                           <span className="badge" style={{ color: s.score >= 50 ? "inherit" : "#c0392b" }}>{s.score >= 50 ? "PASS" : "FAIL"}</span>
+                   <div style={{ display: "grid", gap: "10px" }}>
+                     {sorted.map((s, i) => {
+                       const tier = getGradeTier(s.score);
+                       return (
+                         <div key={i} style={{ padding: "14px 16px", background: "rgba(0,0,0,0.02)", borderRadius: "12px", borderLeft: `4px solid ${tier.color}` }}>
+                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                             <span style={{ fontWeight: 700, fontSize: "14px" }}>{s.name}</span>
+                             <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+                               <span className="mono" style={{ fontWeight: 800, fontSize: "14px" }}>{s.score}%</span>
+                               <span style={{ fontSize: "9px", fontWeight: 800, padding: "3px 8px", borderRadius: "4px", border: `1px solid ${tier.color}`, color: tier.color, letterSpacing: "0.08em" }}>{tier.label}</span>
+                             </div>
+                           </div>
+                           <div style={{ height: "4px", background: "var(--border)", borderRadius: "2px", overflow: "hidden" }}>
+                             <div style={{ height: "100%", width: `${s.score}%`, background: tier.color, borderRadius: "2px", transition: "width 0.6s ease" }} />
+                           </div>
+                           {s.remark && s.remark !== "N/A" && (
+                             <p style={{ fontSize: "11px", color: "var(--muted)", marginTop: "6px", fontStyle: "italic" }}>"{s.remark}"</p>
+                           )}
                          </div>
-                       </div>
-                     ))}
+                       );
+                     })}
                    </div>
                 </div>
                 <div style={{ display: "grid", gap: "24px" }}>
@@ -254,13 +300,35 @@ export default function Dashboard({ data, onReset }) {
               <div style={S.card}>
                 <p style={S.sectionHeader}>Trait Radar</p>
                 <div style={{ height: "350px" }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <RadarChart data={behaviorRadar}>
-                      <PolarGrid stroke="var(--border)" />
-                      <PolarAngleAxis dataKey="trait" tick={{ fill: "var(--fg)", fontSize: 11, fontWeight: 800 }} />
-                      <Radar dataKey="value" stroke="var(--accent)" fill="var(--accent)" fillOpacity={0.2} />
-                    </RadarChart>
-                  </ResponsiveContainer>
+                  {behaviorRadar.length >= 3 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RadarChart cx="50%" cy="50%" outerRadius="65%" data={behaviorRadar}>
+                        <PolarGrid stroke="var(--border)" />
+                        <PolarAngleAxis dataKey="trait" tick={{ fill: "var(--fg)", fontSize: 11, fontWeight: 700 }} />
+                        <PolarRadiusAxis angle={30} domain={[0, 5]} tick={false} axisLine={false} />
+                        <Radar name="Rating" dataKey="value" stroke="var(--accent)" fill="var(--accent)" fillOpacity={0.35} strokeWidth={2} />
+                        <Tooltip formatter={(v) => [`${v}/5`, "Rating"]} contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--fg)", borderRadius: "8px" }} />
+                      </RadarChart>
+                    </ResponsiveContainer>
+                  ) : behaviorRadar.length > 0 ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "16px", paddingTop: "16px" }}>
+                      {behaviorRadar.map((b, i) => (
+                        <div key={i}>
+                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", fontWeight: 600, marginBottom: "6px" }}>
+                            <span>{b.trait}</span><span>{b.value}/5</span>
+                          </div>
+                          <div style={{ display: "flex", gap: "4px" }}>
+                            {[1,2,3,4,5].map(v => <div key={v} style={{ flex: 1, height: "8px", borderRadius: "2px", background: v <= b.value ? "var(--accent)" : "var(--border)" }} />)}
+                          </div>
+                        </div>
+                      ))}
+                      <p style={{ fontSize: "11px", color: "var(--muted)", marginTop: "8px" }}>Radar requires 3+ traits — showing bars instead.</p>
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--muted)", fontSize: "13px" }}>
+                      No conduct traits found on this report.
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -285,7 +353,77 @@ export default function Dashboard({ data, onReset }) {
 
       case "insights":
         return (
-          <div className="animate-in" style={{ display: "grid", gap: "24px" }}>
+          <div className="animate-in" style={{ display: "grid", gap: "32px" }}>
+
+            {/* Next Term Forecast */}
+            {(() => {
+              const avg = data.average_score || 0;
+              const weakList = data.weak_subjects || [];
+              const strongList = data.strong_subjects || [];
+              const riskScore = data.risk_score || 0;
+              const attPct = attendance.percentage || 0;
+              const behaviorAvg = behavior.length > 0
+                ? Math.round(behavior.reduce((s, b) => s + b.rating, 0) / behavior.length)
+                : null;
+
+              // Project potential average if weak subjects were addressed
+              const potentialAvg = weakList.length > 0
+                ? Math.min(avg + Math.round(weakList.length * 4.5), 100)
+                : avg;
+
+              const trend = riskScore <= 3 ? "Upward" : riskScore <= 7 ? "Stable" : riskScore <= 12 ? "At Risk" : "Declining";
+              const trendColor = riskScore <= 3 ? "#27ae60" : riskScore <= 7 ? "#f39c12" : "#c0392b";
+
+              const focusItems = [
+                ...weakList.map(s => `Bring ${s} above 50% — currently a failing subject`),
+                ...(attPct < 80 ? [`Improve attendance from ${attPct}% toward 90%+`] : []),
+                ...(behaviorAvg !== null && behaviorAvg <= 2 ? ["Work on conduct and classroom behaviour"] : []),
+                ...(strongList.slice(0, 2).map(s => `Maintain strong performance in ${s}`)),
+              ].slice(0, 5);
+
+              return (
+                <div style={{ ...S.card, borderTop: `4px solid ${trendColor}` }}>
+                  <p style={S.sectionHeader}>Next Term Forecast</p>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "24px", marginBottom: "24px" }}>
+                    <div>
+                      <p style={{ fontSize: "10px", fontWeight: 800, color: "var(--muted)", letterSpacing: "0.1em", marginBottom: "6px" }}>PROJECTED TREND</p>
+                      <div style={{ fontSize: "22px", fontWeight: 900, color: trendColor }}>{trend}</div>
+                      <p style={{ fontSize: "11px", color: "var(--muted)", marginTop: "4px" }}>Based on current trajectory</p>
+                    </div>
+                    <div>
+                      <p style={{ fontSize: "10px", fontWeight: 800, color: "var(--muted)", letterSpacing: "0.1em", marginBottom: "6px" }}>CURRENT AVG</p>
+                      <div style={{ fontSize: "22px", fontWeight: 900 }}>{avg}%</div>
+                      <p style={{ fontSize: "11px", color: "var(--muted)", marginTop: "4px" }}>This term</p>
+                    </div>
+                    <div>
+                      <p style={{ fontSize: "10px", fontWeight: 800, color: "var(--muted)", letterSpacing: "0.1em", marginBottom: "6px" }}>POTENTIAL AVG</p>
+                      <div style={{ fontSize: "22px", fontWeight: 900, color: "#27ae60" }}>{potentialAvg}%</div>
+                      <p style={{ fontSize: "11px", color: "var(--muted)", marginTop: "4px" }}>If weak subjects addressed</p>
+                    </div>
+                  </div>
+                  {focusItems.length > 0 && (
+                    <div>
+                      <p style={{ fontSize: "11px", fontWeight: 800, color: "var(--muted)", letterSpacing: "0.1em", marginBottom: "12px" }}>NEXT TERM ACTION PLAN</p>
+                      <div style={{ display: "grid", gap: "8px" }}>
+                        {focusItems.map((item, i) => (
+                          <div key={i} style={{ display: "flex", gap: "12px", alignItems: "flex-start", fontSize: "13px", lineHeight: 1.5 }}>
+                            <span style={{ fontSize: "10px", fontWeight: 800, color: trendColor, marginTop: "3px", minWidth: "16px" }}>{i + 1}.</span>
+                            <span>{item}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {weakList.length === 0 && riskScore <= 3 && (
+                    <p style={{ fontSize: "13px", color: "#27ae60", marginTop: "8px" }}>
+                      This student is on track to perform well next term. Encourage continued effort in strong subjects.
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* Subject Recommendations */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(350px, 1fr))", gap: "24px" }}>
               {recs.map((r, i) => (
                 <div key={i} style={{ ...S.card, display: "flex", gap: "20px", borderLeft: `6px solid ${r.type === 'improvement' ? '#c0392b' : '#0052A3'}` }}>
@@ -301,6 +439,7 @@ export default function Dashboard({ data, onReset }) {
                 </div>
               ))}
             </div>
+
           </div>
         );
 
