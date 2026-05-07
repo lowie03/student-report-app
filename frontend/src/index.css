@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap');
 
 :root {
   --bg: #f0f4f8;
@@ -8,6 +8,11 @@
   --accent: #0052A3;
   --surface: #ffffff;
   --ring: rgba(0, 82, 163, 0.08);
+  
+  --success: #27ae60;
+  --warning: #f39c12;
+  --danger: #c0392b;
+  --info: #2980b9;
   
   --space-1: 4px;
   --space-2: 8px;
@@ -25,6 +30,11 @@
   --accent: #0052A3;
   --surface: #002952;
   --ring: rgba(0, 82, 163, 0.15);
+  
+  --success: #2ecc71;
+  --warning: #f1c40f;
+  --danger: #e74c3c;
+  --info: #3498db;
 }
 
 * {
@@ -106,6 +116,103 @@ button.primary:hover {
   border: 1px solid var(--border);
 }
 
+/* ── Trend Badges ──────────────────────────────────────────────────────────── */
+
+.trend-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 99px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.trend-badge.improving {
+  background: rgba(39, 174, 96, 0.12);
+  color: var(--success);
+  border: 1px solid rgba(39, 174, 96, 0.25);
+}
+
+.trend-badge.declining {
+  background: rgba(192, 57, 43, 0.12);
+  color: var(--danger);
+  border: 1px solid rgba(192, 57, 43, 0.25);
+}
+
+.trend-badge.stable {
+  background: rgba(90, 122, 154, 0.12);
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+
+.trend-badge.excellent {
+  background: rgba(39, 174, 96, 0.15);
+  color: var(--success);
+  border: 1px solid rgba(39, 174, 96, 0.3);
+}
+
+.trend-badge.weak {
+  background: rgba(192, 57, 43, 0.15);
+  color: var(--danger);
+  border: 1px solid rgba(192, 57, 43, 0.3);
+}
+
+.trend-badge.baseline {
+  background: var(--ring);
+  color: var(--accent);
+  border: 1px solid var(--border);
+}
+
+/* ── Tier Badges ───────────────────────────────────────────────────────────── */
+
+.tier-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.tier-badge.exceptional { background: linear-gradient(135deg, rgba(39,174,96,0.15), rgba(46,204,113,0.08)); color: var(--success); border: 1px solid rgba(39,174,96,0.3); }
+.tier-badge.strong { background: rgba(41,128,185,0.12); color: var(--info); border: 1px solid rgba(41,128,185,0.25); }
+.tier-badge.improving { background: rgba(39,174,96,0.1); color: var(--success); border: 1px solid rgba(39,174,96,0.2); }
+.tier-badge.moderate { background: rgba(243,156,18,0.1); color: var(--warning); border: 1px solid rgba(243,156,18,0.2); }
+.tier-badge.weak { background: rgba(192,57,43,0.1); color: var(--danger); border: 1px solid rgba(192,57,43,0.2); }
+.tier-badge.persistent { background: rgba(192,57,43,0.15); color: var(--danger); border: 1px solid rgba(192,57,43,0.3); }
+
+/* ── Pattern Alert Cards ───────────────────────────────────────────────────── */
+
+.pattern-alert {
+  padding: 14px 18px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.6;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.pattern-alert.strength {
+  background: rgba(39, 174, 96, 0.06);
+  border: 1px solid rgba(39, 174, 96, 0.15);
+  color: var(--fg);
+}
+
+.pattern-alert.warning {
+  background: rgba(192, 57, 43, 0.06);
+  border: 1px solid rgba(192, 57, 43, 0.15);
+  color: var(--fg);
+}
+
+/* ── Animations ────────────────────────────────────────────────────────────── */
+
 .animate-in {
   animation: fade-in 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -113,6 +220,15 @@ button.primary:hover {
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+.pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
 }
 
 /* Custom Scrollbar */

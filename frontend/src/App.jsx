@@ -33,20 +33,32 @@ export default function App() {
     const formData = new FormData();
     formData.append("file", file);
 
+    // Simulate progress while Gemini thinks (the real work happens server-side)
+    let simulated = 0;
+    const progressInterval = setInterval(() => {
+      simulated += Math.random() * 3;
+      if (simulated > 90) simulated = 90;
+      setProgress(Math.round(simulated));
+    }, 800);
+
     try {
       const res = await axios.post(`${API_URL}/upload`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
-        onUploadProgress: (e) => {
-          if (e.total) setProgress(Math.round((e.loaded / e.total) * 40));
-        },
+        timeout: 600000, // 10 min timeout for thinking model
       });
 
+      clearInterval(progressInterval);
       setProgress(100);
       setTimeout(() => setData(res.data), 400);
     } catch (err) {
+      clearInterval(progressInterval);
+      console.error("Upload error:", err);
       const msg =
         err.response?.data?.detail ||
-        "Analysis failed. Make sure the backend is running on port 8000.";
+        err.response?.data?.message ||
+        (err.code === "ECONNABORTED" ? "Request timed out. The AI model is taking too long." : null) ||
+        (err.message?.includes("Network Error") ? "Cannot reach backend at port 8000. Is it running?" : null) ||
+        `Analysis failed: ${err.message}`;
       setError(msg);
     } finally {
       setLoading(false);
@@ -140,7 +152,7 @@ export default function App() {
           {loading ? "Analyzing Document..." : "Drop report to begin"}
         </h2>
         <p style={{ color: "var(--muted)", fontSize: 14 }}>
-          {loading ? "This usually takes less than 10 seconds" : "PDF, PNG or JPG up to 10MB"}
+          {loading ? "AI is thinking — this may take 1–3 minutes" : "PDF, PNG or JPG up to 10MB"}
         </p>
 
         {loading && (

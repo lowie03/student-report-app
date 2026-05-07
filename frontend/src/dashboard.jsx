@@ -3,6 +3,7 @@ import {
   BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Cell,
   Tooltip, RadarChart, Radar, PolarGrid,
   PolarAngleAxis, PolarRadiusAxis, PieChart, Pie, AreaChart, Area,
+  LineChart, Line, CartesianGrid,
 } from "recharts";
 
 const S = {
@@ -102,6 +103,13 @@ export default function Dashboard({ data, onReset }) {
   const behavior = data.behavior || [];
   const attendance = data.attendance || {};
   const recs = data.recommendations || [];
+  const trends = data.trends || {};
+  const trendLine = trends.trend_line || [];
+  const subjectTrends = trends.subject_trends || [];
+  const patterns = trends.patterns || [];
+  const trajectory = trends.trajectory || {};
+  const hasHistory = trends.has_history || false;
+  const termCount = trends.term_count || 1;
 
   const pieData = [
     { name: "Achieved", value: data.average_score },
@@ -121,6 +129,50 @@ export default function Dashboard({ data, onReset }) {
     }
     return acc;
   }, {});
+
+  // Helper: get trend arrow and class for a subject
+  const getSubjectTrend = (subjectName) => {
+    const t = subjectTrends.find(st => st.subject.toLowerCase() === subjectName.toLowerCase());
+    if (!t || t.trend === "new") return null;
+    const arrows = {
+      improving: "↑", slightly_improving: "↗", declining: "↓", slightly_declining: "↘",
+      stable: "—", consistently_excellent: "★", consistently_weak: "!"
+    };
+    const classes = {
+      improving: "improving", slightly_improving: "improving", declining: "declining",
+      slightly_declining: "declining", stable: "stable",
+      consistently_excellent: "excellent", consistently_weak: "weak"
+    };
+    return { arrow: arrows[t.trend] || "→", cls: classes[t.trend] || "stable", delta: t.delta, desc: t.description };
+  };
+
+  // Helper: tier label for recommendations
+  const getTierDisplay = (tier) => {
+    const map = {
+      exceptional: { label: "EXCEPTIONAL", cls: "exceptional" },
+      strong_and_improving: { label: "RISING STAR", cls: "strong" },
+      strong_stable: { label: "STRONG", cls: "strong" },
+      improving: { label: "IMPROVING", cls: "improving" },
+      newly_struggling: { label: "NEW STRUGGLE", cls: "weak" },
+      persistently_weak: { label: "URGENT", cls: "persistent" },
+      weak: { label: "NEEDS WORK", cls: "weak" },
+      moderate: { label: "MODERATE", cls: "moderate" },
+    };
+    return map[tier] || { label: tier?.toUpperCase() || "GENERAL", cls: "moderate" };
+  };
+
+  // Helper: trajectory badge
+  const getTrajectoryDisplay = (dir) => {
+    const map = {
+      improving: { label: "Upward Trend", cls: "improving", icon: "↑" },
+      slightly_improving: { label: "Gradual Rise", cls: "improving", icon: "↗" },
+      declining: { label: "Declining", cls: "declining", icon: "↓" },
+      slightly_declining: { label: "Slight Dip", cls: "declining", icon: "↘" },
+      stable: { label: "Stable", cls: "stable", icon: "—" },
+      baseline: { label: "First Term", cls: "baseline", icon: "•" },
+    };
+    return map[dir] || { label: "Baseline", cls: "baseline", icon: "•" };
+  };
 
   const renderContent = () => {
     switch (activeTab) {
@@ -184,35 +236,87 @@ export default function Dashboard({ data, onReset }) {
                   </ResponsiveContainer>
                   <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", textAlign: "center" }}>
                     <div style={{ fontSize: "24px", fontWeight: 800 }}>{data.average_score}%</div>
-                    <div style={{ fontSize: "9px", color: "var(--muted)", fontWeight: 700 }}>VERIFIED</div>
+                    <div style={{ fontSize: "9px", color: "var(--muted)", fontWeight: 700 }}>
+                      {hasHistory ? `${trajectory.average_delta >= 0 ? "+" : ""}${trajectory.average_delta} pts` : "TERM 1"}
+                    </div>
                   </div>
                 </div>
               </div>
               <div style={S.card}>
-                <p style={S.sectionHeader}>Subject Performance Area</p>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+                  <p style={{ ...S.sectionHeader, marginBottom: 0 }}>
+                    {hasHistory ? "Performance Trend" : "Subject Performance"}
+                  </p>
+                  {hasHistory && (
+                    <span className={`trend-badge ${getTrajectoryDisplay(trajectory.direction).cls}`}>
+                      {getTrajectoryDisplay(trajectory.direction).icon} {getTrajectoryDisplay(trajectory.direction).label}
+                    </span>
+                  )}
+                </div>
                 <div style={{ height: "240px" }}>
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={sorted.slice(0, 8)}>
-                      <XAxis dataKey="name" tick={{fill: 'var(--muted)', fontSize: 9}} hide={false} />
-                      <defs>
-                        <linearGradient id="colorScore" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="var(--fg)" stopOpacity={0.1}/>
-                          <stop offset="95%" stopColor="var(--fg)" stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
-                      <Area type="monotone" dataKey="score" stroke="var(--fg)" fillOpacity={1} fill="url(#colorScore)" strokeWidth={3} />
-                      <Tooltip />
-                    </AreaChart>
+                    {hasHistory && trendLine.length > 1 ? (
+                      <AreaChart data={trendLine}>
+                        <XAxis dataKey="term" tick={{fill: 'var(--muted)', fontSize: 10}} />
+                        <YAxis domain={[0, 100]} tick={{fill: 'var(--muted)', fontSize: 10}} width={30} />
+                        <defs>
+                          <linearGradient id="colorTrend" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="var(--fg)" stopOpacity={0.15}/>
+                            <stop offset="95%" stopColor="var(--fg)" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <Area type="monotone" dataKey="score" stroke="var(--fg)" fillOpacity={1} fill="url(#colorTrend)" strokeWidth={3} dot={{ r: 5, fill: "var(--fg)", strokeWidth: 0 }} />
+                        <Tooltip contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--fg)', borderRadius: '8px' }} formatter={(v) => [`${v}%`, "Average"]} />
+                      </AreaChart>
+                    ) : (
+                      <AreaChart data={sorted.slice(0, 8)} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                        <XAxis dataKey="name" tick={{fill: 'var(--muted)', fontSize: 9}} />
+                        <YAxis domain={[0, 100]} tick={{fill: 'var(--muted)', fontSize: 10}} width={40} />
+                        <defs>
+                          <linearGradient id="colorScore" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="var(--fg)" stopOpacity={0.15}/>
+                            <stop offset="95%" stopColor="var(--fg)" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <Area type="monotone" dataKey="score" stroke="var(--fg)" fillOpacity={1} fill="url(#colorScore)" strokeWidth={3} dot={{ r: 4, fill: "var(--bg)", stroke: "var(--fg)", strokeWidth: 2 }} />
+                        <Tooltip contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--fg)', borderRadius: '8px' }} />
+                      </AreaChart>
+                    )}
                   </ResponsiveContainer>
                 </div>
               </div>
             </div>
 
+            {/* Pattern Alerts */}
+            {patterns.length > 0 && (
+              <div style={{ display: "grid", gap: "12px" }}>
+                <p style={S.sectionHeader}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{marginRight: "4px", verticalAlign: "middle"}}><path d="M21 21H4.6c-.56 0-.84 0-1.054-.109a1 1 0 0 1-.437-.437C3 20.24 3 19.96 3 19.4V3M7 14l4-4 4 4 6-6"/></svg> Trend Patterns Detected</p>
+                {patterns.map((p, i) => (
+                  <div key={i} className={`pattern-alert ${p.type}`}>
+                    <span style={{ display: "flex", alignItems: "center" }}>{p.type === "strength" ? <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--success)" strokeWidth="2.5"><path d="M20 6L9 17l-5-5"/></svg> : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" strokeWidth="2.5"><path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>}</span>
+                    <span>{p.message}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* AI Summary + Trajectory */}
             <div style={{ ...S.card, borderLeft: "8px solid var(--fg)" }}>
               <p style={S.sectionHeader}>AI Narrative Summary</p>
               <p style={{ fontSize: "15px", color: "var(--fg)", lineHeight: 1.8, whiteSpace: "pre-line", fontWeight: 500 }}>
                 {data.summary}
               </p>
+              {hasHistory && trajectory.description && (
+                <p style={{ fontSize: "13px", color: "var(--muted)", lineHeight: 1.7, marginTop: "16px", paddingTop: "16px", borderTop: "1px solid var(--border)" }}>
+                  <strong>Trend Analysis:</strong> {trajectory.description}
+                </p>
+              )}
+              {!hasHistory && (
+                <p className="pulse-glow" style={{ fontSize: "12px", color: "var(--muted)", marginTop: "16px", paddingTop: "12px", borderTop: "1px solid var(--border)" }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{display: "inline", verticalAlign: "middle", marginRight: "6px"}}><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>Upload more report cards for this student to unlock trend analysis, historical comparisons, and smarter predictions.
+                </p>
+              )}
             </div>
           </div>
         );
@@ -226,10 +330,18 @@ export default function Dashboard({ data, onReset }) {
                    <div style={{ display: "grid", gap: "10px" }}>
                      {sorted.map((s, i) => {
                        const tier = getGradeTier(s.score);
+                       const trend = getSubjectTrend(s.name);
                        return (
                          <div key={i} style={{ padding: "14px 16px", background: "rgba(0,0,0,0.02)", borderRadius: "12px", borderLeft: `4px solid ${tier.color}` }}>
                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                             <span style={{ fontWeight: 700, fontSize: "14px" }}>{s.name}</span>
+                             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                               <span style={{ fontWeight: 700, fontSize: "14px" }}>{s.name}</span>
+                               {trend && (
+                                 <span className={`trend-badge ${trend.cls}`} title={trend.desc}>
+                                   {trend.arrow} {trend.delta > 0 ? `+${trend.delta}` : trend.delta}
+                                 </span>
+                               )}
+                             </div>
                              <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
                                <span className="mono" style={{ fontWeight: 800, fontSize: "14px" }}>{s.score}%</span>
                                <span style={{ fontSize: "9px", fontWeight: 800, padding: "3px 8px", borderRadius: "4px", border: `1px solid ${tier.color}`, color: tier.color, letterSpacing: "0.08em" }}>{tier.label}</span>
@@ -240,6 +352,9 @@ export default function Dashboard({ data, onReset }) {
                            </div>
                            {s.remark && s.remark !== "N/A" && (
                              <p style={{ fontSize: "11px", color: "var(--muted)", marginTop: "6px", fontStyle: "italic" }}>"{s.remark}"</p>
+                           )}
+                           {trend && trend.desc && (
+                             <p style={{ fontSize: "11px", color: "var(--muted)", marginTop: "4px" }}>{trend.desc}</p>
                            )}
                          </div>
                        );
@@ -366,13 +481,16 @@ export default function Dashboard({ data, onReset }) {
                 ? Math.round(behavior.reduce((s, b) => s + b.rating, 0) / behavior.length)
                 : null;
 
-              // Project potential average if weak subjects were addressed
               const potentialAvg = weakList.length > 0
                 ? Math.min(avg + Math.round(weakList.length * 4.5), 100)
                 : avg;
 
-              const trend = riskScore <= 3 ? "Upward" : riskScore <= 7 ? "Stable" : riskScore <= 12 ? "At Risk" : "Declining";
-              const trendColor = riskScore <= 3 ? "#27ae60" : riskScore <= 7 ? "#f39c12" : "#c0392b";
+              // Use real trajectory data if available
+              const trajDir = hasHistory ? getTrajectoryDisplay(trajectory.direction) : null;
+              const trendLabel = trajDir ? trajDir.label : (riskScore <= 3 ? "Upward" : riskScore <= 7 ? "Stable" : riskScore <= 12 ? "At Risk" : "Declining");
+              const trendColor = hasHistory
+                ? (trajectory.direction?.includes("improving") ? "#27ae60" : trajectory.direction?.includes("declining") ? "#c0392b" : "#f39c12")
+                : (riskScore <= 3 ? "#27ae60" : riskScore <= 7 ? "#f39c12" : "#c0392b");
 
               const focusItems = [
                 ...weakList.map(s => `Bring ${s} above 50% — currently a failing subject`),
@@ -384,11 +502,13 @@ export default function Dashboard({ data, onReset }) {
               return (
                 <div style={{ ...S.card, borderTop: `4px solid ${trendColor}` }}>
                   <p style={S.sectionHeader}>Next Term Forecast</p>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "24px", marginBottom: "24px" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: hasHistory ? "1fr 1fr 1fr 1fr" : "1fr 1fr 1fr", gap: "24px", marginBottom: "24px" }}>
                     <div>
                       <p style={{ fontSize: "10px", fontWeight: 800, color: "var(--muted)", letterSpacing: "0.1em", marginBottom: "6px" }}>PROJECTED TREND</p>
-                      <div style={{ fontSize: "22px", fontWeight: 900, color: trendColor }}>{trend}</div>
-                      <p style={{ fontSize: "11px", color: "var(--muted)", marginTop: "4px" }}>Based on current trajectory</p>
+                      <div style={{ fontSize: "22px", fontWeight: 900, color: trendColor }}>{trendLabel}</div>
+                      <p style={{ fontSize: "11px", color: "var(--muted)", marginTop: "4px" }}>
+                        {hasHistory ? `Based on ${termCount} terms` : "Based on current data"}
+                      </p>
                     </div>
                     <div>
                       <p style={{ fontSize: "10px", fontWeight: 800, color: "var(--muted)", letterSpacing: "0.1em", marginBottom: "6px" }}>CURRENT AVG</p>
@@ -400,6 +520,15 @@ export default function Dashboard({ data, onReset }) {
                       <div style={{ fontSize: "22px", fontWeight: 900, color: "#27ae60" }}>{potentialAvg}%</div>
                       <p style={{ fontSize: "11px", color: "var(--muted)", marginTop: "4px" }}>If weak subjects addressed</p>
                     </div>
+                    {hasHistory && (
+                      <div>
+                        <p style={{ fontSize: "10px", fontWeight: 800, color: "var(--muted)", letterSpacing: "0.1em", marginBottom: "6px" }}>CHANGE</p>
+                        <div style={{ fontSize: "22px", fontWeight: 900, color: trajectory.average_delta >= 0 ? "#27ae60" : "#c0392b" }}>
+                          {trajectory.average_delta >= 0 ? "+" : ""}{trajectory.average_delta} pts
+                        </div>
+                        <p style={{ fontSize: "11px", color: "var(--muted)", marginTop: "4px" }}>vs last term</p>
+                      </div>
+                    )}
                   </div>
                   {focusItems.length > 0 && (
                     <div>
@@ -423,21 +552,64 @@ export default function Dashboard({ data, onReset }) {
               );
             })()}
 
-            {/* Subject Recommendations */}
+            {/* Warnings & Strengths from Trends */}
+            {(data.warnings?.length > 0 || data.strengths?.length > 0) && (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
+                {data.warnings?.length > 0 && (
+                  <div style={S.card}>
+                    <p style={S.sectionHeader}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" strokeWidth="2.5" style={{marginRight: "4px", verticalAlign: "middle"}}><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Risk Signals</p>
+                    <div style={{ display: "grid", gap: "8px" }}>
+                      {data.warnings.map((w, i) => (
+                        <div key={i} style={{ fontSize: "13px", lineHeight: 1.6, padding: "10px 14px", borderRadius: "8px", background: "rgba(192,57,43,0.05)", borderLeft: w.startsWith("[Trend]") ? "3px solid var(--danger)" : "3px solid var(--warning)" }}>
+                          {w.startsWith("[Trend]") && <span className="trend-badge declining" style={{ marginRight: "8px", fontSize: "9px" }}>TREND</span>}
+                          {w.replace("[Trend] ", "")}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {data.strengths?.length > 0 && (
+                  <div style={S.card}>
+                    <p style={S.sectionHeader}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--success)" strokeWidth="2.5" style={{marginRight: "4px", verticalAlign: "middle"}}><path d="M20 6L9 17l-5-5"/></svg> Positive Signals</p>
+                    <div style={{ display: "grid", gap: "8px" }}>
+                      {data.strengths.map((s, i) => (
+                        <div key={i} style={{ fontSize: "13px", lineHeight: 1.6, padding: "10px 14px", borderRadius: "8px", background: "rgba(39,174,96,0.05)", borderLeft: s.startsWith("[Trend]") ? "3px solid var(--success)" : "3px solid var(--info)" }}>
+                          {s.startsWith("[Trend]") && <span className="trend-badge improving" style={{ marginRight: "8px", fontSize: "9px" }}>TREND</span>}
+                          {s.replace("[Trend] ", "")}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Subject Recommendations with Tier Badges */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(350px, 1fr))", gap: "24px" }}>
-              {recs.map((r, i) => (
-                <div key={i} style={{ ...S.card, display: "flex", gap: "20px", borderLeft: `6px solid ${r.type === 'improvement' ? '#c0392b' : '#0052A3'}` }}>
-                   <div style={{ fontSize: "24px" }}>{r.type === 'improvement' ? "🎯" : "⚡"}</div>
-                   <div>
-                     <h4 style={{ fontWeight: 800, fontSize: "15px", marginBottom: "8px" }}>{r.subject} Insight</h4>
-                     <p style={{ fontSize: "14px", color: "var(--muted)", lineHeight: 1.6 }}>{r.advice}</p>
-                     <div style={{ marginTop: "16px", display: "flex", gap: "8px" }}>
-                        <span className="badge" style={{ fontSize: "9px" }}>PRIORITY: {r.type === 'improvement' ? "HIGH" : "NORMAL"}</span>
-                        <span className="badge" style={{ fontSize: "9px" }}>IMPACT: +15% POTENTIAL</span>
+              {recs.map((r, i) => {
+                const tierInfo = getTierDisplay(r.tier);
+                return (
+                  <div key={i} style={{ ...S.card, display: "flex", gap: "20px", borderLeft: `6px solid ${r.type === 'improvement' ? '#c0392b' : '#0052A3'}` }}>
+                     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "40px", height: "40px", borderRadius: "10px", background: r.type === 'improvement' ? 'rgba(192,57,43,0.08)' : 'rgba(0,82,163,0.08)', flexShrink: 0 }}>{r.type === 'improvement' ? <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#c0392b" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg> : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0052A3" strokeWidth="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>}</div>
+                     <div>
+                       <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
+                         <h4 style={{ fontWeight: 800, fontSize: "15px" }}>{r.subject}</h4>
+                         <span className={`tier-badge ${tierInfo.cls}`}>{tierInfo.label}</span>
+                       </div>
+                       <p style={{ fontSize: "14px", color: "var(--muted)", lineHeight: 1.6 }}>{r.advice}</p>
+                       {r.teacher_remark && r.teacher_remark !== "null" && (
+                         <p style={{ fontSize: "12px", color: "var(--muted)", marginTop: "8px", fontStyle: "italic", borderTop: "1px solid var(--border)", paddingTop: "8px" }}>
+                           Teacher: "{r.teacher_remark}"
+                         </p>
+                       )}
+                       <div style={{ marginTop: "12px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                          <span className="badge" style={{ fontSize: "9px" }}>PRIORITY: {r.type === 'improvement' ? "HIGH" : "NORMAL"}</span>
+                          <span className="badge" style={{ fontSize: "9px" }}>{r.score}%</span>
+                       </div>
                      </div>
-                   </div>
-                </div>
-              ))}
+                  </div>
+                );
+              })}
             </div>
 
           </div>
@@ -540,12 +712,23 @@ export default function Dashboard({ data, onReset }) {
       <aside className="no-print" style={S.sidebar}>
         <div style={{ marginBottom: "56px", padding: "0 32px", textAlign: "left" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "16px" }}>
-            <div style={{ width: "32px", height: "32px", background: "var(--fg)", borderRadius: "8px" }} />
+            <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+              <rect width="32" height="32" rx="8" fill="var(--accent)" fillOpacity="0.1" />
+              <path d="M8 13L16 9L24 13L16 17L8 13Z" fill="var(--accent)" fillOpacity="0.3" stroke="var(--accent)" strokeWidth="1.5" strokeLinejoin="round"/>
+              <path d="M8 17.5L16 21.5L24 17.5" stroke="var(--fg)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M8 22L16 26L24 22" stroke="var(--fg)" strokeOpacity="0.4" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              <circle cx="16" cy="13" r="2" fill="var(--fg)" />
+            </svg>
             <h2 style={{ fontSize: "18px", fontWeight: 900, letterSpacing: "-0.04em" }}>ANALYSIS</h2>
           </div>
           <div style={{ border: "1px solid var(--border)", padding: "16px", borderRadius: "12px", background: "rgba(0,0,0,0.01)" }}>
              <p style={{ fontSize: "13px", fontWeight: 800 }}>{data.student_name}</p>
-             <p style={{ fontSize: "10px", color: "var(--fg)", opacity: 0.7, marginTop: "2px", fontWeight: 600 }}>ID: {data.student_class} // BATCH_26</p>
+             <p style={{ fontSize: "10px", color: "var(--muted)", marginTop: "4px", fontWeight: 600 }}>{data.student_class} {data.term ? `• ${data.term}` : ""}</p>
+             <div style={{ display: "flex", gap: "8px", marginTop: "10px", flexWrap: "wrap" }}>
+               {data.student_id && <span className="badge" style={{ fontSize: "9px" }}>ID #{data.student_id}</span>}
+               <span className="badge" style={{ fontSize: "9px" }}>{data.terms_on_record || 1} TERM{(data.terms_on_record || 1) > 1 ? "S" : ""}</span>
+               {hasHistory && <span className={`trend-badge ${getTrajectoryDisplay(trajectory.direction).cls}`} style={{ fontSize: "9px" }}>{getTrajectoryDisplay(trajectory.direction).icon} {getTrajectoryDisplay(trajectory.direction).label}</span>}
+             </div>
           </div>
         </div>
 
